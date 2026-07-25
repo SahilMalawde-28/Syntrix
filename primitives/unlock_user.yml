@@ -1,0 +1,17 @@
+- name: Unlock user
+  hosts: all
+  # REMOVED become: yes from here
+
+  tasks:
+    - name: Linux unlock account
+      user:
+        name: "{{ user }}"
+        password_lock: no
+      become: yes  # Trigger sudo only for the Linux task
+      when: ansible_os_family != "Windows"
+
+    - name: Windows enable user account
+      win_user:
+        name: "{{ user }}"
+        account_disabled: no
+      when: ansible_os_family == "Windows"

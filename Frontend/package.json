@@ -1,0 +1,64 @@
+{
+  "name": "usap",
+  "version": "2.0.0",
+  "description": "Unified System Administration Platform",
+  "main": "electron/main.js",
+  "homepage": "./",
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "react-scripts build",
+    "electron": "electron .",
+    "dev": "concurrently \"cross-env BROWSER=none react-scripts start\" \"wait-on http://localhost:3000 && electron .\"",
+    "pack": "npm run build && electron-builder",
+    "flask": "python flask-backend/app.py"
+  },
+  "dependencies": {
+    "axios": "^1.6.0",
+    "clsx": "^2.1.0",
+    "framer-motion": "^11.0.0",
+    "lucide-react": "^0.363.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.22.0",
+    "react-scripts": "5.0.1",
+    "recharts": "^2.12.0"
+  },
+  "devDependencies": {
+    "autoprefixer": "^10.4.18",
+    "concurrently": "^8.2.2",
+    "cross-env": "^10.1.0",
+    "electron": "^29.0.0",
+    "electron-builder": "^24.13.0",
+    "postcss": "^8.4.35",
+    "tailwindcss": "^3.4.1",
+    "wait-on": "^7.2.0"
+  },
+  "build": {
+    "appId": "com.usap.platform",
+    "productName": "USAP",
+    "files": [
+      "build/**/*",
+      "electron/**/*"
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "linux": {
+      "target": "AppImage"
+    }
+  },
+  "eslintConfig": {
+    "extends": [
+      "react-app"
+    ]
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead"
+    ],
+    "development": [
+      "last 1 chrome version"
+    ]
+  }
+}

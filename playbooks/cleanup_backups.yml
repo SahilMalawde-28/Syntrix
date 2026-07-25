@@ -1,0 +1,76 @@
+---
+# playbooks/cleanup_backups.yml
+# Cleans up old backups from C:\BackupStorage on Windows
+# Keeps the N most recent zip+meta pairs, deletes the rest
+
+- name: "Cleanup Old Backups"
+  hosts: "{{ target_hosts | default('lab') }}"
+  gather_facts: yes
+  vars:
+    backup_storage: "C:\\BackupStorage"
+    keep_latest: 5
+
+  tasks:
+
+    - name: "[Windows] List all zip files sorted newest first"
+      ansible.windows.win_shell: |
+        $files = Get-ChildItem "C:\BackupStorage" -Filter "*.zip" -ErrorAction SilentlyContinue |
+                 Sort-Object LastWriteTime -Descending
+        if ($files) {
+          $files | ForEach-Object { Write-Output $_.Name }
+        } else {
+          Write-Output "NONE"
+        }
+      when: ansible_os_family == "Windows"
+      register: win_backup_list
+      changed_when: false
+
+    - name: "[Windows] Report no backups found"
+      ansible.builtin.debug:
+        msg: "No backups found in C:\\BackupStorage — nothing to clean"
+      when:
+        - ansible_os_family == "Windows"
+        - win_backup_list.stdout | trim == "NONE"
+
+    - name: "[Windows] Show all backups found"
+      ansible.builtin.debug:
+        msg: "Found {{ win_backup_list.stdout_lines | reject('equalto','NONE') | reject('equalto','') | list | length }} backup(s) — keeping {{ keep_latest }} most recent"
+      when:
+        - ansible_os_family == "Windows"
+        - win_backup_list.stdout | trim != "NONE"
+
+    - name: "[Windows] Delete old backups beyond keep_latest"
+      ansible.windows.win_shell: |
+        $files = Get-ChildItem "C:\BackupStorage" -Filter "*.zip" -ErrorAction SilentlyContinue |
+                 Sort-Object LastWriteTime -Descending
+        $keepCount = {{ keep_latest }}
+        if ($files.Count -le $keepCount) {
+          Write-Output "Nothing to delete — only $($files.Count) backup(s) exist, keeping $keepCount"
+          exit 0
+        }
+        $toDelete = $files | Select-Object -Skip $keepCount
+        $deletedCount = 0
+        foreach ($file in $toDelete) {
+          $metaName = $file.Name -replace '\.zip$', '.meta.json'
+          $metaPath = "C:\BackupStorage\$metaName"
+          Remove-Item $file.FullName -Force
+          Write-Output "Deleted: $($file.Name)"
+          if (Test-Path $metaPath) {
+            Remove-Item $metaPath -Force
+            Write-Output "Deleted: $metaName"
+          }
+          $deletedCount++
+        }
+        Write-Output "Cleanup complete — deleted $deletedCount old backup(s), kept $keepCount"
+      when:
+        - ansible_os_family == "Windows"
+        - win_backup_list.stdout | trim != "NONE"
+      register: cleanup_result
+
+    - name: "[Windows] Show cleanup result"
+      ansible.builtin.debug:
+        msg: "{{ cleanup_result.stdout_lines }}"
+      when:
+        - ansible_os_family == "Windows"
+        - cleanup_result is defined
+        - cleanup_result.stdout is defined

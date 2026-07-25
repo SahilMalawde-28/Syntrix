@@ -1,0 +1,15 @@
+- name: Add user to group (Linux)
+  user:
+    name: "{{ user }}"
+    groups: "{{ group }}"
+    append: yes
+  become: yes
+  when: ansible_os_family != "Windows"
+
+- name: Add user to group (Windows)
+  win_group_membership:
+    name: "{{ group }}"
+    members:
+      - "{{ user }}"
+    state: present
+  when: ansible_os_family == "Windows"

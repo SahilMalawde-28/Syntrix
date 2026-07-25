@@ -1,0 +1,28 @@
+# ── Windows: Task Scheduler ────────────────────────────────────────────────
+- name: "[schedule_backup][Windows] Create scheduled task"
+  community.windows.win_scheduled_task:
+    name:        "{{ sched_job_name }}"
+    description: "Automated backup of {{ sched_source }}"
+    actions:
+      - path:      "powershell.exe"
+        arguments: >-
+          -NonInteractive -Command
+          "Compress-Archive -Path '{{ sched_source }}'
+          -DestinationPath 'C:\BackupStorage\scheduled_backup_$(Get-Date -Format yyyyMMdd_HHmmss).zip'
+          -Force"
+    triggers:
+      - type:           time
+        start_boundary: "2026-01-01T00:00:00"
+        repetition:
+          interval: "PT{{ sched_interval_min }}M"
+          stop_at_duration_end: false
+    run_level:   highest
+    logon_type:  interactive_token
+    state:       present
+    enabled:     yes
+  when: ansible_os_family == "Windows"
+
+- name: "[schedule_backup][Windows] Confirm task created"
+  ansible.builtin.debug:
+    msg: "⏰ Windows Scheduled Task '{{ sched_job_name }}' created — interval {{ sched_interval_min }} min on {{ inventory_hostname }}"
+  when: ansible_os_family == "Windows"

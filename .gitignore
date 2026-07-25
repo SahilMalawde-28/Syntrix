@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+.env
+Frontend/node_modules/
+node_modules/
+.cache/
+dist/
+build/
+out/
+release/
+.vscode/

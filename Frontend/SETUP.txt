@@ -1,0 +1,145 @@
+================================================================
+USAP v2.0 — Unified SysAdmin Platform
+Electron + React + Tailwind + Framer Motion + Flask
+================================================================
+
+WHAT'S DIFFERENT FROM v1:
+  ✅ Tailwind CSS — proper utility classes, consistent spacing
+  ✅ Framer Motion — IQON-level animations everywhere
+  ✅ SVG GaugeRing — animated arc gauges like IQON processor card
+  ✅ CountUp numbers — KPIs count up from 0 on page load
+  ✅ Staggered list animations — each row fades in sequentially
+  ✅ Spring physics hover — cards lift with spring, not linear ease
+  ✅ Pulsing status dots — online nodes have live animated glow
+  ✅ Progress bars animate — fill from 0 to target over 1.2s
+  ✅ Terminal has mac-style header — red/yellow/green dots
+  ✅ Animated toggle in Settings — spring physics
+  ✅ Every page uses same design system — PageShell component
+
+================================================================
+STEP 1 — PREREQUISITES
+================================================================
+
+Node.js v18+:
+  node --version
+  # If missing: https://nodejs.org/
+
+Python 3.8+:
+  python3 --version
+
+================================================================
+STEP 2 — INSTALL
+================================================================
+
+  cd usap2
+  npm install
+  pip3 install flask flask-cors --break-system-packages
+
+================================================================
+STEP 3 — RUN IN DEVELOPMENT
+================================================================
+
+Terminal 1 — Flask backend:
+  python flask-backend/app.py
+  # → [USAP Flask] Starting on http://127.0.0.1:5000
+
+Terminal 2 — React + Electron:
+  npm run dev
+  # Starts React on :3000, opens Electron window automatically
+
+================================================================
+STEP 4 — RUN IN BROWSER (no Electron)
+================================================================
+
+  npm start   (Terminal 1: flask running already)
+  # Open: http://localhost:3000
+  # Note: window controls (minimize/maximize) need Electron
+
+================================================================
+STEP 5 — BUILD INSTALLER
+================================================================
+
+  npm run pack
+  # Output: dist/USAP Setup.exe (Windows) or dist/USAP.AppImage (Linux)
+
+================================================================
+WHAT EACH PAGE HAS
+================================================================
+
+Dashboard:
+  - 5 KPI cards with CountUp animation + spring hover lift
+  - Node inventory with animated status dots and CPU bars
+  - Fleet resources with SVG GaugeRing (animated arc on load)
+  - 4 utilization bars animating from 0% to target
+  - 5 alert items sliding in from right with stagger
+  - Activity feed with row hover highlight
+  - AreaChart with gradient fill + custom tooltip
+  - Pending tasks with spring hover
+
+Backup & Recovery (Domain 8):
+  - 4 stat cards each with a GaugeRing + CountUp
+  - 6 task cards with colored top border per task
+  - Live terminal output with mac-style header bar
+  - Color-coded output (green=ok, red=failed, blue=PLAY/TASK)
+  - Animated Show/Hide terminal panel (AnimatePresence)
+  - Spinner while playbook is running
+  - EventSource streaming — output appears line by line
+
+All 12 domain pages:
+  - PageShell component with animated header
+  - Same card-base design with hover lift
+  - ActionCard with built-in terminal output
+  - Consistent color system per domain
+
+================================================================
+ANIMATION SUMMARY
+================================================================
+
+On page load:
+  - Page fades up (fadeUp keyframe, 0.28s)
+  - KPI cards stagger in (0.07s between each)
+  - Grid rows stagger in after KPIs
+  - Number values count up from 0 (1.3s, easeOutCubic)
+  - Progress bars fill from 0 to target (1.2s, cubic-bezier)
+  - GaugeRing arc animates from 0 to value (1.4s, easeOutCubic)
+
+On hover:
+  - Cards: spring lift y:-2 to y:-3 (stiffness:360, damping:28)
+  - Nav items: smooth x padding shift
+  - Alert items: x:1 slide
+  - Activity rows: background fade
+  - Task rows: border + background
+  - Buttons: opacity + scale on tap
+
+Continuous:
+  - Online status dots: pulse opacity+scale (2.5s loop)
+  - Flask status indicator: opacity pulse (2s loop)
+  - Logo mark: spring bounce on hover
+
+================================================================
+HOW TO WIRE IN YOUR TEAMMATES' CODE
+================================================================
+
+Each domain page is in src/pages/DomainPages.jsx
+Find the function for their domain (e.g. UsersPage)
+Replace the PageShell children with real UI
+
+The Flask routes are all in flask-backend/app.py
+The API client functions are in src/api/client.js
+
+Example — adding a real create user form:
+  // In UsersPage, the form already exists with Input components
+  // Just connect to api.createUser(username, password)
+  // ✅ Done — no layout work needed
+
+================================================================
+KEYBOARD SHORTCUTS
+================================================================
+
+Ctrl+K     — Focus search
+F5         — Reload (dev mode)
+Ctrl+Shift+I — DevTools (dev mode)
+
+================================================================
+END
+================================================================
