@@ -4,7 +4,8 @@
   tasks:
     # --- Linux Side ---
     - name: Linux users
-      command: "cut -d: -f1 /etc/passwd"
+      # UIDs >= 1000 are standard human accounts; excludes 'nobody' (65534)
+      shell: "getent passwd | awk -F: '$3 >= 1000 && $3 != 65534 {print $1}'"
       register: users_linux
       when: ansible_os_family != "Windows"
 
@@ -15,8 +16,7 @@
 
     # --- Windows Side ---
     - name: Windows users
-      # Using PowerShell to get a clean list of names only
-      win_shell: "Get-LocalUser | Select-Object -ExpandProperty Name"
+      win_shell: "Get-LocalUser | Where-Object { $_.Enabled -eq $true } | Select-Object -ExpandProperty Name"
       register: users_win
       when: ansible_os_family == "Windows"
 

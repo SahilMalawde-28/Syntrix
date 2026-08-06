@@ -1,99 +1,46 @@
-"""
-main.py — Automation Platform Entry Point
-Routes CLI commands to the correct domain controller.
-
-Usage:
-    python main.py backup [action]
-    python main.py monitor [vitals | health | process | kill <process_name>] [--target <host>]
-    python main.py provision
-    python main.py user [action]
-"""
-
-import sys
 import argparse
+import sys
 
 def main():
-    parser = argparse.ArgumentParser(
-        prog="automation_platform",
-        description="Lab Automation Platform — Sysadmin Control Center",
-    )
-    sub = parser.add_subparsers(dest="domain", help="Domain to operate on")
+    parser = argparse.ArgumentParser(prog="automation_platform")
+    sub = parser.add_subparsers(dest="domain")
 
-    # ── Domain Parsers ──────────────────────────────────────────────────────
-    sub.add_parser("backup",    help="Backup & Recovery operations",   add_help=False)
-    sub.add_parser("monitor",   help="System monitoring & health",     add_help=False)
-    sub.add_parser("provision", help="Machine provisioning",           add_help=False)
-    sub.add_parser("user",      help="User management operations",      add_help=False)
-    sub.add_parser("network",   help="Network & connectivity checks",   add_help=False)
-    sub.add_parser("log",       help="Log collection & auditing",       add_help=False)
+    # ── User Domain Router ──────────────────────────────────────────────────
+    user_p = sub.add_parser("user")
+    user_p.add_argument("action", choices=[
+        "create", "delete", "add-group", "remove-group",
+        "grant-admin", "revoke-admin", "grant-command",
+        "lock", "unlock", "set-password", "list"
+    ])
+    user_p.add_argument("--target", default="all")
+    user_p.add_argument("--username")
+    user_p.add_argument("--group")
+    user_p.add_argument("--command")
+    user_p.add_argument("--password")
+    user_p.add_argument("--password-hash", dest="password_hash")
 
-    # Parse the top-level domain, keep the rest for the controllers
-    args, remaining = parser.parse_known_args()
+    # ── Telemetry & Monitoring Domain Router ───────────────────────────────
+    telemetry_p = sub.add_parser("telemetry")
+    telemetry_p.add_argument("action", choices=["get-stats", "kill-process"])
+    telemetry_p.add_argument("--target", default="all")
+    telemetry_p.add_argument("--process-name", dest="process_name")
+    # ── Detailed Monitoring Domain Router ──────────────────────────────────
+    monitor_p = sub.add_parser("monitor")
+    monitor_p.add_argument("action", choices=["vitals", "health", "processes", "kill-process"])
+    monitor_p.add_argument("--target", default="all")
+    monitor_p.add_argument("--process-name", dest="process_name")
 
-    # ── Routing Logic ───────────────────────────────────────────────────────
+    args = parser.parse_args()
 
-    if args.domain == "backup":
-        sys.argv = ["backup_controller"] + remaining
-        import controllers.backup_controller as bc
-        bc.__name__ = "__main__"
-        try:
-            exec(
-                open("controllers/backup_controller.py").read()
-                .split("if __name__")[1],
-                {**bc.__dict__, "__name__": "__main__"}
-            )
-        except Exception as e:
-            print(f"[Error] Failed to execute backup controller: {e}")
-
+    if args.domain == "user":
+        from controllers.user_controller import run_user_cli
+        run_user_cli(args)
+    elif args.domain == "telemetry":
+        from controllers.telemetry_controller import run_telemetry_cli
+        run_telemetry_cli(args)
     elif args.domain == "monitor":
-        import controllers.monitoring_controller as mc
-        
-        # --- NEW LOGIC: Extract Target ---
-        target_host = "all"  # Default to all machines
-        if "--target" in remaining:
-            idx = remaining.index("--target")
-            if idx + 1 < len(remaining):
-                target_host = remaining[idx + 1]
-                # Remove them from 'remaining' so they don't break the 'action' index
-                remaining.pop(idx + 1)
-                remaining.pop(idx)
-
-        if not remaining:
-            print("\nUsage: python main.py monitor <action> [--target <host>]")
-            print("Actions: vitals, health, process, kill <process_name>")
-            return
-
-        action = remaining[0]
-        
-        # Pass target_host to each function
-        if action == "vitals":
-            mc.check_system_vitals(target=target_host)
-        elif action == "health":
-            mc.perform_health_check(target=target_host)
-        elif action == "process":
-            mc.monitor_processes(target=target_host)
-        elif action == "kill":
-            if len(remaining) > 1:
-                mc.kill_heavy_processes(remaining[1], target=target_host)
-            else:
-                print("Error: Please specify a process name to kill.")
-        else:
-            print(f"Unknown monitoring action: {action}")
-
-    elif args.domain == "provision":
-        from controllers.provision_controller import menu
-        menu()
-
-    elif args.domain == "user":
-        print("[main] User controller delegation...")
-        sys.argv = ["user_controller"] + remaining
-        from controllers import user_controller
-
-    elif args.domain in ["network", "log"]:
-        print(f"[main] The {args.domain} controller is not yet wired in.")
-
-    else:
-        parser.print_help()
+        from controllers.monitoring_controller import run_monitoring_cli
+        run_monitoring_cli(args)
 
 if __name__ == "__main__":
     main()

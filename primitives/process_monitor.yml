@@ -11,7 +11,7 @@
       register: linux_cpu_hogs
       when: 
         - target_process is not defined
-        - [cite_start]ansible_os_family != "Windows" [cite: 22]
+        - ansible_os_family != "Windows"
 
     - name: Identify high CPU-consuming processes (Windows)
       win_shell: |
@@ -20,25 +20,25 @@
       register: windows_cpu_hogs
       when: 
         - target_process is not defined
-        - [cite_start]ansible_os_family == "Windows" [cite: 22]
+        - ansible_os_family == "Windows"
 
     - name: Display top resource consumers
       debug:
         msg: "{{ (ansible_os_family == 'Windows') | ternary(windows_cpu_hogs.stdout, linux_cpu_hogs.stdout_lines) }}"
       when: target_process is not defined
 
-    # --- TASK 4.5: TERMINATION PHASE (The "Smart Weapon") [cite: 513, 516] ---
+    # --- TASK 4.5: TERMINATION PHASE (The "Smart Weapon") ---
 
     - name: Terminate unauthorized or heavy process (Linux)
       command: "pkill {{ target_process }}"
       when: 
         - target_process is defined
-        - [cite_start]ansible_os_family != "Windows" [cite: 517]
+        - ansible_os_family != "Windows"
       ignore_errors: yes
 
     - name: Terminate unauthorized or heavy process (Windows)
       win_shell: "Stop-Process -Name {{ target_process }} -Force"
       when: 
         - target_process is defined
-        - [cite_start]ansible_os_family == "Windows" [cite: 517]
+        - ansible_os_family == "Windows"
       ignore_errors: yes

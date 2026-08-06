@@ -6,8 +6,10 @@ import Sidebar from './components/layout/Sidebar';
 import Topbar  from './components/layout/Topbar';
 import Dashboard   from './pages/Dashboard';
 import BackupPage  from './pages/BackupPage';
+import InventoryPage  from './pages/InventoryPage';
+
 import {
-  InventoryPage, UsersPage, SoftwarePage, ConfigPage,
+  UsersPage, SoftwarePage, ConfigPage,
   MonitorPage, PatchesPage, ServicesPage, NetworkPage,
   LogsPage, ProvisionPage, CompliancePage, DiagnosticsPage,
   AlertsPage, ReportsPage, SettingsPage,
@@ -32,25 +34,30 @@ export default function App() {
         <Sidebar />
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <Topbar />
-          <Routes>
-            <Route path="/"            element={<Dashboard />} />
-            <Route path="/inventory"   element={<InventoryPage />} />
-            <Route path="/users"       element={<UsersPage />} />
-            <Route path="/software"    element={<SoftwarePage />} />
-            <Route path="/config"      element={<ConfigPage />} />
-            <Route path="/monitor"     element={<MonitorPage />} />
-            <Route path="/patches"     element={<PatchesPage />} />
-            <Route path="/services"    element={<ServicesPage />} />
-            <Route path="/network"     element={<NetworkPage />} />
-            <Route path="/backup"      element={<BackupPage />} />
-            <Route path="/logs"        element={<LogsPage />} />
-            <Route path="/provision"   element={<ProvisionPage />} />
-            <Route path="/compliance"  element={<CompliancePage />} />
-            <Route path="/diagnostics" element={<DiagnosticsPage />} />
-            <Route path="/alerts"      element={<AlertsPage />} />
-            <Route path="/reports"     element={<ReportsPage />} />
-            <Route path="/settings"    element={<SettingsPage />} />
-          </Routes>
+          
+          {/* ADDED: Scrollable wrapper around all route views */}
+          <main style={{ flex: 1, overflowY: 'auto' }}>
+            <Routes>
+              <Route path="/"            element={<Dashboard />} />
+              <Route path="/inventory"   element={<InventoryPage />} />
+              <Route path="/users"       element={<UsersPage />} />
+              <Route path="/software"    element={<SoftwarePage />} />
+              <Route path="/config"      element={<ConfigPage />} />
+              <Route path="/monitor"     element={<MonitorPage />} />
+              <Route path="/patches"     element={<PatchesPage />} />
+              <Route path="/services"    element={<ServicesPage />} />
+              <Route path="/network"     element={<NetworkPage />} />
+              <Route path="/backup"      element={<BackupPage />} />
+              <Route path="/logs"        element={<LogsPage />} />
+              <Route path="/provision"   element={<ProvisionPage />} />
+              <Route path="/compliance"  element={<CompliancePage />} />
+              <Route path="/diagnostics" element={<DiagnosticsPage />} />
+              <Route path="/alerts"      element={<AlertsPage />} />
+              <Route path="/reports"     element={<ReportsPage />} />
+              <Route path="/settings"    element={<SettingsPage />} />
+            </Routes>
+          </main>
+
         </div>
       </div>
     </BrowserRouter>

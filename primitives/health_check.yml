@@ -1,6 +1,6 @@
 - name: Domain 4 - System Health Check
   hosts: all
-  # Connection is handled dynamically (SSH for Linux, WinRM for Windows) [cite: 69]
+  # Connection is handled dynamically (SSH for Linux, WinRM for Windows)
 
   tasks:
     # --- Task 4.3: Network Reachability (The Heartbeat) ---

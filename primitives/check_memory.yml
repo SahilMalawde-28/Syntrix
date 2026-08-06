@@ -1,23 +1,23 @@
 - name: Domain 4 - Check Memory Usage
   hosts: all
-  # Privilege escalation is avoided here to prevent Windows WinRM crashes [cite: 975]
+  # Privilege escalation is avoided here to prevent Windows WinRM crashes[cite: 8]
 
   tasks:
     # --- Linux Execution Path (Task 4.2) ---
     - name: Run free -m command (Linux)
       command: free -m
       register: linux_mem
-      [cite_start]when: ansible_os_family != "Windows" [cite: 22, 145]
+      when: ansible_os_family != "Windows"
 
     # --- Windows Execution Path (Task 4.2 Automation) ---
-    # Replaces manual Task Manager usage with PowerShell CIM Instance queries [cite: 104, 143]
+    # Replaces manual Task Manager usage with PowerShell CIM Instance queries[cite: 8]
     - name: Get Memory Stats (Windows)
       win_shell: |
         Get-CimInstance Win32_OperatingSystem | Select-Object `
         @{Name="TotalPhys_MB";Expression={[math]::round($_.TotalVisibleMemorySize/1024)}}, `
         @{Name="FreePhys_MB";Expression={[math]::round($_.FreePhysicalMemory/1024)}}
       register: windows_mem
-      [cite_start]when: ansible_os_family == "Windows" [cite: 22, 145]
+      when: ansible_os_family == "Windows"
 
     # --- Standardized Output Layer ---
     - name: Show Memory Stats (Linux)
