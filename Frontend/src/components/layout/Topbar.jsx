@@ -75,7 +75,7 @@ export default function Topbar() {
           </motion.button>
         ))}
 
-        {/* Flask status pill */}
+        {/* Cloud connection status */}
         <div className="flex items-center gap-[5px] rounded-[6px] px-[9px]"
           style={{ height: 30, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', fontSize: 10.5, color: 'rgba(255,255,255,0.38)' }}>
           <motion.div
@@ -83,7 +83,7 @@ export default function Topbar() {
             animate={{ opacity: [1, 0.35, 1] }}
             transition={{ duration: 2.2, repeat: Infinity }}
           />
-          :5000
+          Cloud
         </div>
 
         {/* Avatar */}

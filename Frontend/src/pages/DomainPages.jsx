@@ -2,6 +2,7 @@ import React, { useState ,useEffect} from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import PageShell from '../components/layout/PageShell';
 import { MeshTexture, CardHeader, Chip, Input, TerminalOutput, Spinner, Toggle } from '../components/ui';
+import * as api from '../api/client';
 
 function cleanOutputLog(rawStr) {
   if (!rawStr) return '';
@@ -129,11 +130,7 @@ function ActionCard({ title, sub, domain, action, getParams, color = '#4d9bff', 
     setLines([`▶ Running: python main.py ${domain} ${action} ...`]);
 
     try {
-      if (!window.electronAPI?.runAutomation) {
-        throw new Error('window.electronAPI.runAutomation missing.');
-      }
-
-      const res = await window.electronAPI.runAutomation(domain, action, params);
+      const res = await api.runAutomation(domain, action, params);
 
       if (!res) throw new Error('No response returned from Electron bridge.');
 
@@ -338,11 +335,11 @@ export function UsersPage() {
     }
 
     try {
-      if (!window.electronAPI?.runAutomation) {
+      if (!api.runAutomation) {
         throw new Error('Electron API not found.');
       }
 
-      const res = await window.electronAPI.runAutomation('user', action, formattedParams);
+      const res = await api.runAutomation('user', action, formattedParams);
 
       const cleaned = cleanOutputLog(res.stdout || res.stderr || 'Task completed');
       const isSuccess = res.status === 'success' || res.return_code === 0;
@@ -739,15 +736,15 @@ export function MonitorPage() {
     const targetGroup = target.trim() || 'linux_hosts';
 
     try {
-      if (!window.electronAPI?.runAutomation) {
+      if (!api.runAutomation) {
         throw new Error('Electron automation API unavailable.');
       }
 
       // Execute all monitoring commands concurrently
       const [healthRes, vitalsRes, processRes] = await Promise.all([
-        window.electronAPI.runAutomation('monitor', 'health', { target: targetGroup }),
-        window.electronAPI.runAutomation('monitor', 'vitals', { target: targetGroup }),
-        window.electronAPI.runAutomation('monitor', 'processes', { target: targetGroup })
+        api.runAutomation('monitor', 'health', { target: targetGroup }),
+        api.runAutomation('monitor', 'vitals', { target: targetGroup }),
+        api.runAutomation('monitor', 'processes', { target: targetGroup })
       ]);
 
       const builtHostsMap = {};
@@ -830,8 +827,8 @@ export function MonitorPage() {
 
   async function handleKillProcess(hostName, pid) {
     try {
-      if (window.electronAPI?.runAutomation) {
-        await window.electronAPI.runAutomation('monitor', 'kill_process', { target: hostName, pid });
+      if (api.runAutomation) {
+        await api.runAutomation('monitor', 'kill-process', { target: hostName, pid });
       }
       setMonitoredHosts(prev => {
         const hostData = prev[hostName];
@@ -1043,7 +1040,9 @@ export function SettingsPage() {
 
   async function toggleAutoLaunch(v) {
     setAutoLaunch(v);
-    if (window.electronAPI?.setAutoLaunch) await window.electronAPI.setAutoLaunch(v);
+    // Auto-launch-at-startup was an Electron/desktop-only feature — no
+    // browser equivalent, since a website can't register itself to run on
+    // boot. Simply dropped along with the rest of the desktop-only APIs.
   }
 
   return (

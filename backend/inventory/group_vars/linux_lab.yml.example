@@ -1,0 +1,5 @@
+# Copy to linux_lab.yml and fill in. Prefer SSH keys over passwords.
+ansible_user: labadmin
+ansible_ssh_private_key_file: /app/automation_platform/inventory/keys/lab_id_rsa
+# ansible_become: true
+# ansible_become_password: "CHANGE_ME"

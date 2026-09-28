@@ -1,4 +1,0 @@
-hostname,mac_address,ip,status,os,group
-wsl_local,00:00:00:00:00:00,wsl_local,online,Linux,linux_hosts
-win_server_01,AA:BB:CC:DD:EE:03,192.168.1.20,off,Windows,windows_hosts
-win_local,00:00:00:00:00:00,172.20.0.1,online,Windows,windows_hosts

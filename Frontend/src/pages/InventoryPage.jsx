@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import * as api from '../api/client';
 
 // Helper to parse Ansible setup stdout into clean JSON
 function parseAnsibleFacts(rawStdout) {
@@ -77,8 +78,8 @@ export default function InventoryPage() {
     setIsLoadingFile(true);
     setScanError(null);
     try {
-      if (window.electronAPI?.getInventory) {
-        const res = await window.electronAPI.getInventory();
+      if (api.getInventoryRegistry) {
+        const res = await api.getInventoryRegistry();
         if (res.success) {
           const rawReg = res.registry || {};
           const cleanedReg = {};
@@ -126,8 +127,8 @@ export default function InventoryPage() {
 
   async function saveRegistryToDisk(updatedRegistry) {
     setInventoryRegistry(updatedRegistry);
-    if (window.electronAPI?.updateInventoryFile) {
-      const res = await window.electronAPI.updateInventoryFile(updatedRegistry);
+    if (api.updateInventoryRegistry) {
+      const res = await api.updateInventoryRegistry(updatedRegistry);
       if (!res.success) {
         setScanError(`Failed to update inventory file: ${res.error}`);
       }
@@ -140,11 +141,12 @@ export default function InventoryPage() {
     setScanError(null);
 
     try {
-      if (!window.electronAPI?.runAutomation) {
-        throw new Error('Electron API bridge unavailable.');
-      }
-
-      const response = await window.electronAPI.runAutomation('inventory', 'gather_facts', {
+      // NOTE: 'inventory'/'gather_facts' has no matching sub-parser in
+      // main.py yet (only user/telemetry/monitor exist). This call will
+      // reach the backend and fail with an argparse error until an
+      // inventory_controller.py + sub-parser is added, or this is rewired
+      // to something like domain='telemetry', action='get-stats'.
+      const response = await api.runAutomation('inventory', 'gather_facts', {
         target: selectedGroup === 'ALL' ? 'all' : selectedGroup
       });
 

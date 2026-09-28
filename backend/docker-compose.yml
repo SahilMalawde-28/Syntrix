@@ -1,0 +1,16 @@
+# Now lives at backend/docker-compose.yml, and backend/ contains
+# EVERYTHING: server.py, main.py, controllers/, primitives/, utils/,
+# playbooks/, inventory/. One bind mount covers all of it.
+services:
+  backend:
+    build: .
+    container_name: syntrix-backend
+    restart: unless-stopped
+    # Host networking so Ansible reaches the college lab subnets directly.
+    network_mode: "host"
+    env_file:
+      - .env
+    volumes:
+      # Bind-mount this whole folder so edits to main.py/controllers/
+      # playbooks/credentials take effect without a rebuild.
+      - .:/app

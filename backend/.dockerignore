@@ -1,0 +1,7 @@
+venv/
+__pycache__/
+*.pyc
+.env
+inventory/hosts.ini
+inventory/group_vars/*.yml
+!inventory/group_vars/*.yml.example

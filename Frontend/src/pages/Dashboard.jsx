@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { CardHeader, StatusDot, Chip, CountUp, ProgressBar, MeshTexture } from '../components/ui';
 import GaugeRing from '../components/ui/GaugeRing';
+import * as api from '../api/client';
 
 // ── Global In-Memory Cache ──
 let telemetryCache = {
@@ -48,8 +49,8 @@ export default function Dashboard() {
   const fetchLiveTelemetry = useCallback(async () => {
     setLoading(true);
     try {
-      if (window.electronAPI?.runAutomation) {
-        const res = await window.electronAPI.runAutomation('telemetry', 'get-stats', { target: 'all' });
+      if (api.runAutomation) {
+        const res = await api.runAutomation('telemetry', 'get-stats', { target: 'all' });
         if (res) {
           const rawNodes = res.nodes && res.nodes.length > 0 ? res.nodes : null;
           const rawActivity = res.activity && res.activity.length > 0 ? res.activity : null;

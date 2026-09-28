@@ -1,0 +1,5 @@
+# Copy to windows_lab.yml, fill in, then encrypt:
+#   ansible-vault encrypt inventory/group_vars/windows_lab.yml
+# NEVER commit the decrypted file.
+ansible_user: Administrator
+ansible_password: "CHANGE_ME"

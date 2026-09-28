@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>USAP — Unified SysAdmin Platform</title>
+  <!--
+    The old CSP here only allowed http://127.0.0.1:5000 (the Electron
+    build's local Flask backend), which would silently block every call
+    to Supabase in a real browser. Since this app now talks to
+    *.supabase.co (a different host per project) rather than one fixed
+    local port, a static CSP meta tag can't express that safely without
+    hardcoding your specific project's URL and needing an edit every time
+    it changes. If you want CSP enforcement, set it as an HTTP response
+    header at your hosting layer (Vercel/Netlify/nginx), where it can
+    reference your actual VITE_SUPABASE_URL value.
+  -->
+  <style>
+    body { margin: 0; background: #0c0c0d; }
+    #root { height: 100vh; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="module" src="/src/main.jsx"></script>
+</body>
+</html>
