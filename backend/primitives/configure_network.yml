@@ -1,5 +1,14 @@
-- name: Set DNS server
-  lineinfile:
+- name: Configure DNS on Linux
+  ansible.builtin.lineinfile:
     path: /etc/resolv.conf
+    regexp: '^nameserver '
     line: "nameserver {{ dns_server }}"
-    create: yes
+  become: yes
+  when: ansible_os_family != "Windows"
+
+- name: Configure DNS on Windows
+  ansible.windows.win_dns_client:
+    adapter_names: "*"
+    dns_servers:
+      - "{{ dns_server }}"
+  when: ansible_os_family == "Windows"

@@ -1,65 +1,47 @@
+import json
 import subprocess
+from pathlib import Path
 
 
-def run_playbook(playbook, extra_vars=None):
-    cmd = ["ansible-playbook", playbook]
-
-    if extra_vars:
-        for k, v in extra_vars.items():
-            cmd.extend(["-e", f"{k}={v}"])
-
-    print(f"\n[Provision] Running: {' '.join(cmd)}\n")
-
-    try:
-        subprocess.run(cmd, check=True)
-        print("\n✅ Success\n")
-    except subprocess.CalledProcessError:
-        print("\n❌ Failed\n")
+BACKEND_DIR = Path(__file__).resolve().parents[1]
 
 
-def provision_machine():
-    print("\n=== Provision New Machine ===")
-
-    host = input("Target host (default: localhost): ").strip() or "localhost"
-    user = input("Username: ").strip()
-    group = input("Group (default: labusers): ").strip() or "labusers"
-    hostname = input("Hostname (leave empty to skip): ").strip()
-    dns = input("DNS (default: 8.8.8.8): ").strip() or "8.8.8.8"
-
-    # 🔥 SAFETY FLAGS
-    safe_mode = input("Enable SAFE MODE? (y/n, default=y): ").strip().lower() != "n"
-    modify_file_flag = input("Modify config files? (y/n): ").strip().lower() == "y"
-    run_cmd = input("Run custom command? (y/n): ").strip().lower() == "y"
+def run_provision_cli(args):
+    playbook = BACKEND_DIR / "playbooks" / "provision_machine.yml"
+    inventory = BACKEND_DIR / "inventory" / "hosts.ini"
 
     extra_vars = {
-        "target_hosts": host,
-        "user": user,
-        "group": group,
-        "hostname": hostname,
-        "dns_server": dns,
-        "safe_mode": safe_mode,
-        "modify_file_flag": modify_file_flag,
-        "run_cmd": run_cmd,
-    }
+    "target_hosts": args.target,
 
-    run_playbook("playbooks/provision_machine.yml", extra_vars)
+    "provision_user": args.username,
+    "provision_group": args.group,
+    "provision_hostname": args.hostname,
+    "provision_dns_server": args.dns_server,
 
+    "provision_package_name": args.package_name,
+    "provision_config_src": args.config_src,
+    "provision_config_dest": args.config_dest,
+    "provision_file_path": args.file_path,
+    "provision_file_content": args.file_content,
+    "provision_command": args.command,
 
-def menu():
-    while True:
-        print("\n========== Provisioning Menu ==========")
-        print("1. Full Provision Machine")
-        print("2. Exit")
+    "safe_mode": args.safe_mode,
+    "modify_file_flag": args.modify_file,
+    "run_cmd": args.run_command,
+}
 
-        choice = input("Enter choice: ").strip()
+    cmd = [
+        "ansible-playbook",
+        "-i", str(inventory),
+        str(playbook),
+        "--extra-vars", json.dumps(extra_vars),
+    ]
 
-        if choice == "1":
-            provision_machine()
-        elif choice == "2":
-            break
-        else:
-            print("Invalid choice")
+    result = subprocess.run(
+        cmd,
+        cwd=BACKEND_DIR,
+        text=True,
+    )
 
-
-if __name__ == "__main__":
-    menu()
+    if result.returncode != 0:
+        raise SystemExit(result.returncode)

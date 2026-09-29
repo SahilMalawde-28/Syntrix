@@ -1,5 +1,14 @@
-- name: Copy file
-  copy:
+- name: Copy configuration file on Linux
+  ansible.builtin.copy:
     src: "{{ src }}"
     dest: "{{ dest }}"
     remote_src: yes
+  become: yes
+  when: ansible_os_family != "Windows"
+
+- name: Copy configuration file on Windows
+  ansible.windows.win_copy:
+    src: "{{ src }}"
+    dest: "{{ dest }}"
+    remote_src: yes
+  when: ansible_os_family == "Windows"

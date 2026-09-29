@@ -1,6 +1,16 @@
-- name: Modify file (optional)
-  lineinfile:
+- name: Modify file on Linux
+  ansible.builtin.lineinfile:
     path: "{{ file_path }}"
     line: "{{ content }}"
     create: yes
-  when: modify_file_flag | default(false)
+  become: yes
+  when:
+    - modify_file_flag | default(false)
+    - ansible_os_family != "Windows"
+
+- name: Modify file on Windows
+  ansible.windows.win_shell: |
+    Add-Content -Path "{{ file_path }}" -Value "{{ content }}"
+  when:
+    - modify_file_flag | default(false)
+    - ansible_os_family == "Windows"

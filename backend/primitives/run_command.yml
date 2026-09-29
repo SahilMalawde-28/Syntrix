@@ -1,9 +1,14 @@
-- name: Run command (optional)
-  command: "{{ cmd }}"
-  register: cmd_output
-  when: run_cmd | default(false)
+- name: Run command on Linux
+  ansible.builtin.shell:
+    cmd: "{{ cmd }}"
+  become: yes
+  when:
+    - run_cmd | default(false)
+    - ansible_os_family != "Windows"
 
-- name: Show command output
-  debug:
-    var: cmd_output.stdout
-  when: run_cmd | default(false)
+- name: Run command on Windows
+  ansible.windows.win_shell:
+    cmd: "{{ cmd }}"
+  when:
+    - run_cmd | default(false)
+    - ansible_os_family == "Windows"

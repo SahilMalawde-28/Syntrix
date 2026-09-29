@@ -1,21 +1,17 @@
-- name: Create user management play
-  hosts: all
+# Linux
+- name: Create user on Linux
+  ansible.builtin.user:
+    name: "{{ user }}"
+    state: present
+    create_home: yes
+  become: yes
+  when: ansible_os_family != "Windows"
 
-  tasks:
-    # --- Linux Side ---
-    - name: Create user on Linux
-      ansible.builtin.user:
-        name: "{{ user }}"
-        state: present
-        create_home: yes
-      become: yes # Scoped only to Linux (uses sudo)
-      when: ansible_os_family != "Windows"
-
-    # --- Windows Side ---
-    - name: Create user on Windows
-      ansible.windows.win_user:
-        name: "{{ user }}"
-        password: "TempPassword123!"
-        state: present
-        password_never_expires: yes
-      when: ansible_os_family == "Windows"
+# Windows
+- name: Create user on Windows
+  ansible.windows.win_user:
+    name: "{{ user }}"
+    password: "TempPassword123!"
+    state: present
+    password_never_expires: yes
+  when: ansible_os_family == "Windows"

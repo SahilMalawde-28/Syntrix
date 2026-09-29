@@ -187,7 +187,6 @@ def rebuild_hosts_ini():
             "ansible_become=true\n"
             "ansible_become_method=sudo\n"
             f"ansible_become_pass={LINUX_BECOME_PASSWORD}\n"
-            "ansible_python_interpreter=/usr/bin/python3\n"
         )
         if not LINUX_BECOME_PASSWORD:
             import sys
