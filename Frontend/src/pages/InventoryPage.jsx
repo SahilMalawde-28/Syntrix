@@ -2,37 +2,49 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import * as api from '../api/client';
 
-// Helper to parse Ansible setup stdout into clean JSON
+// Helper to parse Ansible facts from JSON response or stdout string
 function parseAnsibleFacts(rawStdout) {
-  if (!rawStdout || typeof rawStdout !== 'string') return {};
+  if (!rawStdout) return {};
+
+  if (typeof rawStdout === 'object' && !rawStdout.stdout) {
+    return rawStdout;
+  }
 
   const hostMap = {};
+  const content = typeof rawStdout === 'object' ? rawStdout.stdout : rawStdout;
 
-  // Matches both CLI output "host | SUCCESS => {" and Playbook output "ok: [host] => {"
-  const regex = /(?:(?:ok|changed):\s*\[([^\]]+)\]|([a-zA-Z0-9_\.-]+)\s*\|\s*SUCCESS)\s*=>\s*(\{[\s\S]*?\n\})/g;
-  let match;
+  try {
+    const parsedDirectly = JSON.parse(content);
+    if (parsedDirectly && typeof parsedDirectly === 'object') {
+      return parsedDirectly;
+    }
+  } catch (_) {
+    // Regex fallback for raw CLI stdout strings
+    const regex = /(?:(?:ok|changed):\s*\[([^\]]+)\]|([a-zA-Z0-9_\.-]+)\s*\|\s*SUCCESS)\s*=>\s*(\{[\s\S]*?\n\})/g;
+    let match;
 
-  while ((match = regex.exec(rawStdout)) !== null) {
-    const host = match[1] || match[2];
-    const jsonBlock = match[3];
+    while ((match = regex.exec(content)) !== null) {
+      const host = match[1] || match[2];
+      const jsonBlock = match[3];
 
-    try {
-      const parsed = JSON.parse(jsonBlock);
-      const facts = parsed.ansible_facts || parsed;
+      try {
+        const parsed = JSON.parse(jsonBlock);
+        const facts = parsed.ansible_facts || parsed;
 
-      hostMap[host] = {
-        host: host,
-        ip: facts.ansible_default_ipv4?.address || facts.ansible_all_ipv4_addresses?.[0] || 'Unknown',
-        os: facts.ansible_distribution ? `${facts.ansible_distribution} ${facts.ansible_distribution_version}` : (facts.ansible_os_family || 'Linux'),
-        kernel: facts.ansible_kernel || 'N/A',
-        cpuCores: facts.ansible_processor_vcpus || facts.ansible_processor_count || 'N/A',
-        totalRam: facts.ansible_memtotal_mb ? `${(facts.ansible_memtotal_mb / 1024).toFixed(1)} GB` : 'N/A',
-        arch: facts.ansible_architecture || 'x86_64',
-        pythonVersion: facts.ansible_python_version || 'N/A',
-        lastGathered: new Date().toLocaleTimeString()
-      };
-    } catch (err) {
-      console.error('Error parsing facts for host:', host, err);
+        hostMap[host] = {
+          host: host,
+          ip: facts.ansible_default_ipv4?.address || facts.ansible_all_ipv4_addresses?.[0] || 'Unknown',
+          os: facts.ansible_distribution ? `${facts.ansible_distribution} ${facts.ansible_distribution_version}` : (facts.ansible_os_family || 'Linux'),
+          kernel: facts.ansible_kernel || 'N/A',
+          cpuCores: facts.ansible_processor_vcpus || facts.ansible_processor_count || 'N/A',
+          totalRam: facts.ansible_memtotal_mb ? `${(facts.ansible_memtotal_mb / 1024).toFixed(1)} GB` : 'N/A',
+          arch: facts.ansible_architecture || 'x86_64',
+          pythonVersion: facts.ansible_python_version || 'N/A',
+          lastGathered: new Date().toLocaleTimeString()
+        };
+      } catch (err) {
+        console.error('Error parsing facts for host:', host, err);
+      }
     }
   }
 
@@ -141,16 +153,11 @@ export default function InventoryPage() {
     setScanError(null);
 
     try {
-      // NOTE: 'inventory'/'gather_facts' has no matching sub-parser in
-      // main.py yet (only user/telemetry/monitor exist). This call will
-      // reach the backend and fail with an argparse error until an
-      // inventory_controller.py + sub-parser is added, or this is rewired
-      // to something like domain='telemetry', action='get-stats'.
       const response = await api.runAutomation('inventory', 'gather_facts', {
         target: selectedGroup === 'ALL' ? 'all' : selectedGroup
       });
 
-      const parsed = parseAnsibleFacts(response?.stdout);
+      const parsed = parseAnsibleFacts(response?.stdout || response);
 
       if (Object.keys(parsed).length === 0) {
         setScanError(`No live Ansible facts returned for group '${selectedGroup}'. Check SSH connectivity or credentials.`);
@@ -237,7 +244,6 @@ export default function InventoryPage() {
 
     let updatedGroups = (currentHost.groups || []).filter(g => g !== groupToRemove);
 
-    // Fallback default group if array becomes empty
     if (updatedGroups.length === 0) {
       const isWin = (currentHost.os || '').toLowerCase() === 'windows';
       updatedGroups = [isWin ? 'windows_hosts' : 'linux_hosts'];
@@ -666,37 +672,37 @@ export default function InventoryPage() {
                 <button onClick={() => setSelectedHostSpecs(null)} className="text-white/40 hover:text-white">✕</button>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 text-xs">
-                <div className="bg-black/30 p-2.5 rounded border border-white/5 flex flex-col gap-0.5">
-                  <span className="text-white/40 text-[10px]">IPv4 Address</span>
-                  <span className="font-mono text-emerald-400 font-semibold">{selectedHostSpecs.ip}</span>
-                </div>
-                <div className="bg-black/30 p-2.5 rounded border border-white/5 flex flex-col gap-0.5">
-                  <span className="text-white/40 text-[10px]">Architecture</span>
-                  <span className="font-mono text-purple-300 font-semibold">{selectedHostSpecs.arch}</span>
-                </div>
-                <div className="bg-black/30 p-2.5 rounded border border-white/5 flex flex-col gap-0.5">
+              <div className="grid grid-cols-2 gap-3 text-xs font-mono">
+                <div className="p-2.5 rounded bg-black/40 border border-white/5 flex flex-col gap-0.5">
                   <span className="text-white/40 text-[10px]">OS Distribution</span>
-                  <span className="text-white/90">{selectedHostSpecs.os}</span>
+                  <span className="text-purple-300 font-semibold">{selectedHostSpecs.os || 'N/A'}</span>
                 </div>
-                <div className="bg-black/30 p-2.5 rounded border border-white/5 flex flex-col gap-0.5">
-                  <span className="text-white/40 text-[10px]">Kernel Release</span>
-                  <span className="font-mono text-white/70 truncate">{selectedHostSpecs.kernel}</span>
+                <div className="p-2.5 rounded bg-black/40 border border-white/5 flex flex-col gap-0.5">
+                  <span className="text-white/40 text-[10px]">Kernel Version</span>
+                  <span className="text-white/80">{selectedHostSpecs.kernel || 'N/A'}</span>
                 </div>
-                <div className="bg-black/30 p-2.5 rounded border border-white/5 flex flex-col gap-0.5">
-                  <span className="text-white/40 text-[10px]">Compute Cores</span>
-                  <span className="font-mono text-amber-400 font-semibold">{selectedHostSpecs.cpuCores} vCPUs</span>
+                <div className="p-2.5 rounded bg-black/40 border border-white/5 flex flex-col gap-0.5">
+                  <span className="text-white/40 text-[10px]">CPU Cores</span>
+                  <span className="text-emerald-400 font-semibold">{selectedHostSpecs.cpuCores} vCPU</span>
                 </div>
-                <div className="bg-black/30 p-2.5 rounded border border-white/5 flex flex-col gap-0.5">
-                  <span className="text-white/40 text-[10px]">Total System RAM</span>
-                  <span className="font-mono text-blue-400 font-semibold">{selectedHostSpecs.totalRam}</span>
+                <div className="p-2.5 rounded bg-black/40 border border-white/5 flex flex-col gap-0.5">
+                  <span className="text-white/40 text-[10px]">Total Memory</span>
+                  <span className="text-purple-400 font-semibold">{selectedHostSpecs.totalRam}</span>
+                </div>
+                <div className="p-2.5 rounded bg-black/40 border border-white/5 flex flex-col gap-0.5">
+                  <span className="text-white/40 text-[10px]">Architecture</span>
+                  <span className="text-white/80">{selectedHostSpecs.arch || 'N/A'}</span>
+                </div>
+                <div className="p-2.5 rounded bg-black/40 border border-white/5 flex flex-col gap-0.5">
+                  <span className="text-white/40 text-[10px]">Python Engine</span>
+                  <span className="text-white/80">{selectedHostSpecs.pythonVersion || 'N/A'}</span>
                 </div>
               </div>
 
-              <div className="flex justify-end pt-2 border-t border-white/10">
+              <div className="flex justify-end pt-2">
                 <button
                   onClick={() => setSelectedHostSpecs(null)}
-                  className="px-4 py-1.5 rounded bg-white/10 hover:bg-white/20 text-xs font-medium text-white"
+                  className="px-4 py-1.5 rounded bg-white/10 hover:bg-white/20 text-xs font-medium"
                 >
                   Close
                 </button>

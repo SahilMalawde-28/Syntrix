@@ -6,12 +6,12 @@ import platform
 import os
 import re
 
-# Import telemetry logger so every user playbook execution is saved to telemetry_log.csv
 from utils.csv_store import log_telemetry_event
 
 def parse_ansible_stdout(stdout, stderr):
     """
-    Parses standard Ansible output into structured host data for UI filtering.
+    Parses standard Ansible output into structured per-host data.
+    Ensures user arrays correspond strictly to their respective host.
     """
     hosts_summary = {}
     if not stdout:
@@ -39,39 +39,34 @@ def parse_ansible_stdout(stdout, stderr):
                 "stats": stats
             }
 
-    # 2. Extract user array outputted by debug tasks (e.g. list_users.yml)
-    try:
-        # Regex search for JSON debug array in stdout
-        match = re.search(r'"msg":\s*(\[\s*".*?"\s*\]|\{\s*".*?"\s*\})', stdout, re.DOTALL)
-        if match:
-            user_list = json.loads(match.group(1))
-            if isinstance(user_list, list):
-                for host in hosts_summary:
-                    if hosts_summary[host]["status"] == "online":
-                        hosts_summary[host]["users"] = user_list
-    except Exception:
-        pass
+    # 2. Extract per-host user array outputted by debug tasks (e.g. Display Linux/Windows Users)
+    # Matches patterns like: ok: [lin_1] => {\n    "msg": [\n        "user1", ...
+    pattern = r'(?:ok|changed):\s*\[([^\]]+)\]\s*=>\s*\{[^}]*?"msg":\s*(\[\s*[\s\S]*?\])'
+    matches = re.findall(pattern, stdout)
+
+    for host_name, msg_str in matches:
+        if host_name in hosts_summary:
+            try:
+                user_list = json.loads(msg_str)
+                if isinstance(user_list, list):
+                    hosts_summary[host_name]["users"] = user_list
+            except Exception:
+                continue
 
     return hosts_summary
 
 def run_playbook(playbook, extra_vars_dict, target):
-    # Prepare extra-vars as safe JSON string
     extra_vars_json = json.dumps(extra_vars_dict) if extra_vars_dict else ""
-
-    # Current working directory in Linux/WSL format
     cwd = os.getcwd().replace("\\", "/").replace("C:", "/mnt/c")
 
     if platform.system() == "Windows":
-        # Run inside WSL within current working directory context
         ansible_cmd = f"cd '{cwd}' && ANSIBLE_CONFIG_WARNING=False ansible-playbook {playbook} -i inventory/hosts.ini -l {target}"
         if extra_vars_json:
-            # Escape quotes for bash -c string wrapper
             safe_vars = extra_vars_json.replace('"', '\\"')
             ansible_cmd += f' -e "{safe_vars}"'
             
         cmd = ["wsl", "bash", "-c", ansible_cmd]
     else:
-        # Direct execution on Linux/WSL environment
         cmd = [
             "ansible-playbook",
             playbook,
@@ -82,12 +77,8 @@ def run_playbook(playbook, extra_vars_dict, target):
             cmd.extend(["-e", extra_vars_json])
 
     try:
-        # Execute command and capture output
         res = subprocess.run(cmd, capture_output=True, text=True)
-        
-        # Structure hosts data for UI rendering
         hosts_data = parse_ansible_stdout(res.stdout, res.stderr)
-        
         status_str = "success" if res.returncode == 0 else "error"
 
         response = {
@@ -99,7 +90,6 @@ def run_playbook(playbook, extra_vars_dict, target):
         }
     except FileNotFoundError:
         error_msg = "WSL is not installed or available on PATH." if platform.system() == "Windows" else "ansible-playbook binary not found."
-        status_str = "error"
         response = {
             "status": "error",
             "return_code": 1,
@@ -108,7 +98,6 @@ def run_playbook(playbook, extra_vars_dict, target):
             "stderr": f"Execution Failed: {error_msg}"
         }
     except Exception as e:
-        status_str = "error"
         response = {
             "status": "error",
             "return_code": 1,
@@ -117,11 +106,8 @@ def run_playbook(playbook, extra_vars_dict, target):
             "stderr": f"Unexpected error: {str(e)}"
         }
 
-    # Extract clean primitive name (e.g. primitives/create_user.yml -> create_user.yml)
     primitive_name = os.path.basename(playbook)
-    
-    # LOG EVENT TO CSV (maps status to "ok" or "error" for Dashboard compatibility)
-    telemetry_status = "ok" if status_str == "success" else "error"
+    telemetry_status = "ok" if response["status"] == "success" else "error"
     try:
         log_telemetry_event(primitive_name, target, telemetry_status)
     except Exception as log_err:
@@ -133,7 +119,6 @@ def run_user_cli(args):
     target = getattr(args, "target", "all")
     extra_vars = {}
 
-    # Build clean variables dictionary
     if args.action == "create":
         extra_vars = {"user": args.username}
         playbook = "primitives/create_user.yml"
@@ -161,7 +146,7 @@ def run_user_cli(args):
     elif args.action == "grant-command":
         extra_vars = {"user": args.username, "command": args.command}
         playbook = "primitives/grant_command.yml"
-        target = "linux_hosts"  # Force linux target for sudoers commands
+        target = "linux_hosts"
 
     elif args.action == "lock":
         extra_vars = {"user": args.username}

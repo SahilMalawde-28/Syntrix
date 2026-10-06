@@ -11,8 +11,7 @@ from utils.csv_store import (
     upsert_host,
     read_stored_hosts,
     log_telemetry_event,
-    read_recent_telemetry,
-    rebuild_hosts_ini
+    read_recent_telemetry
 )
 
 warnings.filterwarnings("ignore", message=".*urllib3.*match a supported version.*")
@@ -29,9 +28,6 @@ def resolve_dynamic_ip(hostname, fallback_ip):
 
 def run_monitoring_primitive(primitive_name, target="all", extra_vars=None):
     target = target if target else "all"
-
-    # Ensure hosts.ini is updated and off devices are excluded before executing playbook
-    rebuild_hosts_ini()
 
     command = [
         "ansible-playbook",
@@ -56,11 +52,23 @@ def run_monitoring_primitive(primitive_name, target="all", extra_vars=None):
 def parse_and_sync_inventory(raw_output):
     """
     Parses Ansible stdout and syncs status changes directly into hosts_inventory.csv,
-    then updates hosts.ini to exclude offline nodes.
+    extracting node telemetry metrics without modifying inventory/hosts.ini.
     """
     nodes = []
     recap_pattern = re.compile(r'([\w\.\-]+)\s*:\s*ok=(\d+)\s*changed=(\d+)\s*unreachable=(\d+)\s*failed=(\d+)')
-    
+    stats_pattern = re.compile(r'([\w\.\-]+).*?cpu=(\d+).*?memory=(\d+).*?disk=(\d+)', re.IGNORECASE)
+    metrics_map = {}
+
+    for line in raw_output.splitlines():
+        stats_match = stats_pattern.search(line)
+        if stats_match:
+            h_name, cpu_val, mem_val, disk_val = stats_match.groups()
+            metrics_map[h_name] = {
+                "cpu": int(cpu_val),
+                "memory": int(mem_val),
+                "disk": int(disk_val)
+            }
+
     stored_hosts = {h["hostname"]: h for h in read_stored_hosts()}
 
     for line in raw_output.splitlines():
@@ -95,17 +103,18 @@ def parse_and_sync_inventory(raw_output):
                 group=group_name
             )
 
+            node_metrics = metrics_map.get(host, {"cpu": 0, "memory": 0, "disk": 0})
+
             nodes.append({
                 "name": host,
                 "ip": current_ip,
                 "os": cached_host.get("os", "Linux"),
                 "status": status,
-                "cpu": 0,
-                "memory": 0,
-                "disk": 0
+                "cpu": node_metrics["cpu"],
+                "memory": node_metrics["memory"],
+                "disk": node_metrics["disk"]
             })
 
-    # Include offline/unseen nodes in returned dashboard JSON state without executing against them
     for hostname, host_data in stored_hosts.items():
         if not any(n["name"] == hostname for n in nodes):
             nodes.append({
@@ -118,28 +127,40 @@ def parse_and_sync_inventory(raw_output):
                 "disk": 0
             })
 
-    # Sync hosts.ini structure with current active nodes
-    rebuild_hosts_ini()
-
     return nodes
 
 def get_real_chart_data():
-    days_map = { (datetime.now() - timedelta(days=i)).strftime("%a"): {"success": 0, "failed": 0} for i in range(6, -1, -1) }
+    today = datetime.now().date()
+    date_map = {}
+    for i in range(6, -1, -1):
+        d = today - timedelta(days=i)
+        date_str = d.strftime("%Y-%m-%d")
+        date_map[date_str] = {
+            "day": d.strftime("%a"),
+            "success": 0,
+            "failed": 0
+        }
+
     records = read_recent_telemetry(limit=200)
-    
+
     for r in records:
         try:
             dt = datetime.strptime(r["timestamp"], "%Y-%m-%d %H:%M:%S")
-            day_name = dt.strftime("%a")
-            if day_name in days_map:
-                if r["status"] in ["ok", "success", "SUCCESS"]:
-                    days_map[day_name]["success"] += 1
+            date_key = dt.strftime("%Y-%m-%d")
+
+            if date_key in date_map:
+                status_str = str(r.get("status", "")).lower()
+                if status_str in ["ok", "success"]:
+                    date_map[date_key]["success"] += 1
                 else:
-                    days_map[day_name]["failed"] += 1
+                    date_map[date_key]["failed"] += 1
         except (ValueError, KeyError):
             continue
 
-    return [{"day": day, "success": data["success"], "failed": data["failed"]} for day, data in days_map.items()]
+    return [
+        {"day": val["day"], "success": val["success"], "failed": val["failed"]}
+        for val in date_map.values()
+    ]
 
 def run_telemetry_cli(args):
     action = args.action
@@ -168,7 +189,7 @@ def run_telemetry_cli(args):
             "nodes": nodes,
             "activity": [
                 {
-                    "type": "ok" if h.get("status") in ["ok", "success", "SUCCESS"] else "err",
+                    "type": "ok" if str(h.get("status")).lower() in ["ok", "success"] else "err",
                     "title": f"Executed {h.get('primitive') or 'Playbook'}",
                     "host": h.get("target") or "all",
                     "meta": f"Target: {h.get('target') or 'all'}",

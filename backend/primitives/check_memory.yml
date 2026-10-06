@@ -1,31 +1,32 @@
 - name: Domain 4 - Check Memory Usage
   hosts: all
-  # Privilege escalation is avoided here to prevent Windows WinRM crashes[cite: 8]
+  gather_facts: yes  # Ensures ansible_os_family is collected reliably
 
   tasks:
-    # --- Linux Execution Path (Task 4.2) ---
+    # --- Linux Execution Path ---
     - name: Run free -m command (Linux)
       command: free -m
       register: linux_mem
-      when: ansible_os_family != "Windows"
+      when: ansible_os_family | default('') != "Windows"
 
-    # --- Windows Execution Path (Task 4.2 Automation) ---
-    # Replaces manual Task Manager usage with PowerShell CIM Instance queries[cite: 8]
+    # --- Windows Execution Path ---
     - name: Get Memory Stats (Windows)
       win_shell: |
-        Get-CimInstance Win32_OperatingSystem | Select-Object `
-        @{Name="TotalPhys_MB";Expression={[math]::round($_.TotalVisibleMemorySize/1024)}}, `
-        @{Name="FreePhys_MB";Expression={[math]::round($_.FreePhysicalMemory/1024)}}
+        Get-CimInstance Win32_OperatingSystem | Select-Object @{Name="TotalPhys_MB";Expression={[math]::round($_.TotalVisibleMemorySize/1024)}}, @{Name="FreePhys_MB";Expression={[math]::round($_.FreePhysicalMemory/1024)}} | ConvertTo-Json
       register: windows_mem
-      when: ansible_os_family == "Windows"
+      when: ansible_os_family | default('') == "Windows"
 
     # --- Standardized Output Layer ---
     - name: Show Memory Stats (Linux)
       debug:
         msg: "{{ linux_mem.stdout_lines }}"
-      when: ansible_os_family != "Windows"
+      when: 
+        - ansible_os_family | default('') != "Windows"
+        - linux_mem is defined and linux_mem.stdout_lines is defined
 
     - name: Show Memory Stats (Windows)
       debug:
         msg: "{{ windows_mem.stdout_lines }}"
-      when: ansible_os_family == "Windows"
+      when: 
+        - ansible_os_family | default('') == "Windows"
+        - windows_mem is defined and windows_mem.stdout_lines is defined

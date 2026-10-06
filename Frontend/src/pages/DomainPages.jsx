@@ -1,4 +1,4 @@
-import React, { useState ,useEffect} from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import PageShell from '../components/layout/PageShell';
 import { MeshTexture, CardHeader, Chip, Input, TerminalOutput, Spinner, Toggle } from '../components/ui';
@@ -66,7 +66,7 @@ function TaskModal({ task, target, onClose, onExecute }) {
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.95 }}
+        exit={{ opacity: 0, scale: 1 }}
         className="w-full max-w-md rounded-xl p-5 border border-white/10 shadow-2xl"
         style={{ background: '#16171b' }}
       >
@@ -114,7 +114,7 @@ function TaskModal({ task, target, onClose, onExecute }) {
   );
 }
 
-function ActionCard({ title, sub, domain, action, getParams, color = '#4d9bff', icon: Icon, children, onParsedData, disabled }) {
+function ActionCard({ title, sub, domain, action, getParams, color = '#4d9bff', icon: Icon, children, onParsedData, onJobExecuted, onJobStarted, disabled }) {
   const [lines, setLines] = useState([]);
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState(null);
@@ -127,12 +127,17 @@ function ActionCard({ title, sub, domain, action, getParams, color = '#4d9bff', 
     setShowConsole(true);
 
     const params = getParams ? getParams() : {};
+
+    if (onJobStarted) {
+      onJobStarted({ action, domain, target: params.target || 'all' });
+    }
+
     setLines([`▶ Running: python main.py ${domain} ${action} ...`]);
 
     try {
       const res = await api.runAutomation(domain, action, params);
 
-      if (!res) throw new Error('No response returned from Electron bridge.');
+      if (!res) throw new Error('No response returned from IPC backend.');
 
       const outputLines = [];
       let parsedData = safeParseJson(res.stdout) || safeParseJson(res);
@@ -151,12 +156,11 @@ function ActionCard({ title, sub, domain, action, getParams, color = '#4d9bff', 
       if (res.stderr) {
         const cleanedErr = cleanOutputLog(res.stderr);
         if (cleanedErr) {
-          const isSuccess = res.status === 'success' || res.return_code === 0;
+          const isSuccess = res.status === 'success' || res.return_code === 0 || res.success === true;
 
           cleanedErr.split('\n').forEach((line) => {
             if (!line.trim()) return;
 
-            // Ignore standard non-fatal warnings
             if (
               line.includes('world writable directory') ||
               line.includes('ignoring it as an ansible.cfg source') ||
@@ -173,9 +177,8 @@ function ActionCard({ title, sub, domain, action, getParams, color = '#4d9bff', 
 
       setLines((prev) => [...prev, ...outputLines]);
 
-      const isSuccess = res.status === 'success' || res.return_code === 0;
+      const isSuccess = res.status === 'success' || res.return_code === 0 || res.success === true;
       
-      // Determine cleanest output message
       let displayMsg = isSuccess ? 'Execution completed successfully.' : 'Command failed.';
       if (parsedData?.status) {
         displayMsg = `Status: ${parsedData.status}`;
@@ -191,10 +194,17 @@ function ActionCard({ title, sub, domain, action, getParams, color = '#4d9bff', 
         message: displayMsg
       });
 
+      if (onJobExecuted) {
+        onJobExecuted({ success: isSuccess, action, domain, target: params.target || 'all' });
+      }
+
     } catch (e) {
       const errText = `ERROR: ${e.message}`;
       setLines((prev) => [...prev, errText]);
       setResult({ success: false, message: errText });
+      if (onJobExecuted) {
+        onJobExecuted({ success: false, action, domain, target: params.target || 'all' });
+      }
     } finally {
       setRunning(false);
     }
@@ -282,6 +292,10 @@ function UsersI({ color, size }) { return <svg {...ic(color, size)} viewBox="0 0
 function CfgI({ color, size }) { return <svg {...ic(color, size)} viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" /><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" /></svg>; }
 function DefaultI({ color, size }) { return <svg {...ic(color, size)} viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M9 3v18" /></svg>; }
 
+// ==========================================
+// USERS PAGE COMPONENT
+// ==========================================
+
 export function UsersPage() {
   const [target, setTarget] = useState('all');
   const [selectedHostFilter, setSelectedHostFilter] = useState('all');
@@ -293,6 +307,42 @@ export function UsersPage() {
   const [activeTaskModal, setActiveTaskModal] = useState(null);
   const [modalExecutionOutput, setModalExecutionOutput] = useState(null);
   const [hostsData, setHostsData] = useState({});
+
+  // Unified activity & metric tracker state driven entirely by user activity
+  const [activity, setActivity] = useState({
+    total: 0,
+    completed: 0,
+    running: 0,
+    pending: 0,
+    failed: 0,
+    lastExecutionTarget: 'Idle',
+  });
+
+  function handleJobStarted({ action, target }) {
+    setActivity((prev) => ({
+      ...prev,
+      pending: prev.pending + 1,
+      total: prev.total + 1,
+      lastExecutionTarget: `${action} on [${target}]`
+    }));
+
+    setTimeout(() => {
+      setActivity((prev) => ({
+        ...prev,
+        pending: Math.max(0, prev.pending - 1),
+        running: prev.running + 1,
+      }));
+    }, 400);
+  }
+
+  function handleJobExecuted({ success }) {
+    setActivity((prev) => ({
+      ...prev,
+      running: Math.max(0, prev.running - 1),
+      completed: success ? prev.completed + 1 : prev.completed,
+      failed: !success ? prev.failed + 1 : prev.failed,
+    }));
+  }
 
   function handleUserDataParsed(parsed) {
     if (parsed && parsed.hosts) {
@@ -334,15 +384,17 @@ export function UsersPage() {
       formattedParams.command = rawParams.extraParam;
     }
 
+    handleJobStarted({ action, target: formattedParams.target });
+
     try {
       if (!api.runAutomation) {
-        throw new Error('Electron API not found.');
+        throw new Error('IPC API not found.');
       }
 
       const res = await api.runAutomation('user', action, formattedParams);
 
       const cleaned = cleanOutputLog(res.stdout || res.stderr || 'Task completed');
-      const isSuccess = res.status === 'success' || res.return_code === 0;
+      const isSuccess = res.status === 'success' || res.return_code === 0 || res.success === true;
 
       const parsedJson = safeParseJson(res.stdout) || (typeof res === 'object' ? res : null);
       if (parsedJson && parsedJson.hosts) {
@@ -353,15 +405,22 @@ export function UsersPage() {
         status: isSuccess ? 'success' : 'error',
         message: cleaned || (isSuccess ? 'Completed successfully.' : 'Task failed.')
       });
+
+      handleJobExecuted({ success: isSuccess });
     } catch (err) {
       setModalExecutionOutput({
         status: 'error',
         message: `Execution failed: ${err.message}`
       });
+      handleJobExecuted({ success: false });
     }
   }
 
   const hostKeys = Object.keys(hostsData);
+  const totalFinished = activity.completed + activity.failed;
+  const successRate = totalFinished > 0 
+    ? Math.round((activity.completed / totalFinished) * 100) 
+    : 100;
 
   return (
     <PageShell
@@ -373,6 +432,53 @@ export function UsersPage() {
     >
       <div className="grid gap-[12px]" style={{ gridTemplateColumns: '1fr 1fr' }}>
         
+        {/* UNIFIED ACTIVITY & METRICS BAR */}
+        <motion.div className="card col-span-2 bg-neutral-900/90 border border-white/10 rounded-xl p-4 shadow-md" whileHover={{ y: -1 }}>
+          <div className="text-xs font-semibold text-white/70 uppercase tracking-wider mb-3">
+            Users & Access Management Activity
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 text-center">
+            <div className="p-2 border-r border-white/10 flex flex-col justify-center">
+              <span className="text-[10px] uppercase text-white/40 block font-semibold">Total Jobs</span>
+              <span className="text-lg font-bold text-blue-400 font-mono">{activity.total}</span>
+            </div>
+
+            <div className="p-2 border-r border-white/10 flex flex-col justify-center">
+              <span className="text-[10px] uppercase text-white/40 block font-semibold">Completed</span>
+              <span className="text-lg font-bold text-emerald-400 font-mono">{activity.completed}</span>
+            </div>
+
+            <div className="p-2 border-r border-white/10 flex flex-col justify-center">
+              <span className="text-[10px] uppercase text-white/40 block font-semibold">Running</span>
+              <span className={`text-lg font-bold font-mono ${activity.running > 0 ? 'text-blue-400 animate-pulse' : 'text-blue-500'}`}>
+                {activity.running}
+              </span>
+            </div>
+
+            <div className="p-2 border-r border-white/10 flex flex-col justify-center">
+              <span className="text-[10px] uppercase text-white/40 block font-semibold">Pending</span>
+              <span className={`text-lg font-bold font-mono ${activity.pending > 0 ? 'text-amber-400 animate-pulse' : 'text-amber-500'}`}>
+                {activity.pending}
+              </span>
+            </div>
+
+            <div className="p-2 border-r border-white/10 flex flex-col justify-center">
+              <span className="text-[10px] uppercase text-white/40 block font-semibold">Failed</span>
+              <span className="text-lg font-bold text-rose-500 font-mono">{activity.failed}</span>
+            </div>
+
+            <div className="p-2 border-r border-white/10 flex flex-col justify-center">
+              <span className="text-[10px] uppercase text-white/40 block font-semibold">Success Rate</span>
+              <span className="text-lg font-bold text-emerald-400 font-mono">{successRate}%</span>
+            </div>
+
+            <div className="p-2 flex flex-col justify-center">
+              <span className="text-[10px] uppercase text-white/40 block font-semibold">Active Hosts</span>
+              <span className="text-lg font-bold text-purple-400 font-mono">{hostKeys.length}</span>
+            </div>
+          </div>
+        </motion.div>
+
         <motion.div className="card col-span-2" whileHover={{ y: -1 }}>
           <div className="card-body flex items-center justify-between py-[10px] gap-4">
             <span style={{ fontSize: 12, fontWeight: 500, color: '#efefed', whiteSpace: 'nowrap' }}>
@@ -396,6 +502,8 @@ export function UsersPage() {
           color="#17c97c"
           icon={UsersI}
           onParsedData={handleUserDataParsed}
+          onJobStarted={handleJobStarted}
+          onJobExecuted={handleJobExecuted}
         >
           <Input
             label="Username (--username)"
@@ -414,6 +522,8 @@ export function UsersPage() {
           color="#4d9bff"
           icon={UsersI}
           onParsedData={handleUserDataParsed}
+          onJobStarted={handleJobStarted}
+          onJobExecuted={handleJobExecuted}
         />
 
         <ActionCard
@@ -426,6 +536,8 @@ export function UsersPage() {
           color="#e05555"
           icon={UsersI}
           onParsedData={handleUserDataParsed}
+          onJobStarted={handleJobStarted}
+          onJobExecuted={handleJobExecuted}
         >
           <Input
             label="Username to delete (--username)"
@@ -602,105 +714,73 @@ export function SoftwarePage() { return <GenericDomainPage title="Software Manag
 export function ConfigPage() { return <GenericDomainPage title="Configuration Files" domain="config" color="#f59e0b" description="System configurations and templates" />; }
 
 // ==========================================
-// ANSIBLE OUTPUT PARSING HELPER FUNCTIONS
+// ANSIBLE & TELEMETRY PARSING HELPERS
 // ==========================================
 
-/**
- * Extracts valid JSON blocks emitted by Ansible debug tasks 
- * e.g., ok: [wsl_local] => { "msg": [...] }
- */
 function parseAnsibleDebugOutput(rawStdout) {
-  if (!rawStdout || typeof rawStdout !== 'string') return {};
+  if (!rawStdout) return {};
+  if (typeof rawStdout === 'object') return rawStdout;
 
-  const regex = /(?:ok|changed):\s*\[([^\]]+)\]\s*=>\s*(\{[\s\S]*?\n\})/g;
-  const hostMap = {};
-  let match;
+  try {
+    return JSON.parse(rawStdout);
+  } catch (_) {
+    const regex = /(?:ok|changed):\s*\[([^\]]+)\]\s*=>\s*(\{[\s\S]*?\n\})/g;
+    const hostMap = {};
+    let match;
 
-  while ((match = regex.exec(rawStdout)) !== null) {
-    const host = match[1];
-    const jsonBlock = match[2];
+    while ((match = regex.exec(rawStdout)) !== null) {
+      const host = match[1];
+      const jsonBlock = match[2];
 
-    try {
-      const parsed = JSON.parse(jsonBlock);
-      if (!hostMap[host]) hostMap[host] = [];
-      hostMap[host].push(parsed);
-    } catch (err) {
-      console.error('Failed to parse inner Ansible JSON block:', err);
+      try {
+        const parsed = JSON.parse(jsonBlock);
+        if (!hostMap[host]) hostMap[host] = [];
+        hostMap[host].push(parsed);
+      } catch (err) {
+        console.error('Failed to parse inner Ansible JSON block:', err);
+      }
     }
-  }
 
-  return hostMap;
+    return hostMap;
+  }
 }
 
-/**
- * Extracts strictly "Up 1:00" or "Up 15 min" from uptime string
- */
 function parseCleanUptime(rawStr) {
-  if (!rawStr || typeof rawStr !== 'string') return 'Active';
+  if (!rawStr || typeof rawStr !== 'string') return 'N/A';
+  if (rawStr.includes('Uptime:')) {
+    return rawStr.replace('Uptime:', '').trim();
+  }
   const match = rawStr.match(/up\s+([^,]+)/i);
   return match ? `Up ${match[1].trim()}` : rawStr.trim();
 }
 
-/**
- * Parses `df -h` output and isolates root partition '/' or '/mnt/c'
- */
-function parseCleanDisk(msgLines) {
-  if (!Array.isArray(msgLines) || msgLines.length < 2) return 'Mounted';
-
-  let rootLine = msgLines.find(line => {
-    const parts = line.trim().split(/\s+/);
-    const mountPoint = parts[parts.length - 1];
-    return mountPoint === '/' || mountPoint === '/mnt/c' || mountPoint?.toLowerCase() === 'c:\\';
-  });
-
-  if (!rootLine) {
-    rootLine = msgLines.find(l => l.includes('/dev/'));
+function parseCleanDisk(diskVal) {
+  if (!diskVal) return 'N/A';
+  if (typeof diskVal === 'object') {
+    return diskVal.free_gb ? `${diskVal.free_gb} GB Free` : (diskVal.used_pct ? `${diskVal.used_pct}% Used` : 'N/A');
   }
-
-  if (!rootLine) return 'Mounted';
-
-  const parts = rootLine.trim().split(/\s+/);
-  if (parts.length >= 6) {
-    const size = parts[1];
-    const avail = parts[3];
-    const percent = parts[4];
-    const mount = parts[parts.length - 1];
-    return `${avail} free of ${size} (${percent} on ${mount})`;
-  }
-
-  return rootLine;
+  return String(diskVal);
 }
 
-/**
- * Parses `free -m` output and calculates percentage ratio
- */
-function parseCleanMemory(msgLines) {
-  if (!Array.isArray(msgLines)) return 'Synced';
-  const memRow = msgLines.find(l => l.trim().startsWith('Mem:'));
-  if (!memRow) return 'Active';
-
-  const parts = memRow.trim().split(/\s+/);
-  if (parts.length >= 3) {
-    const total = parseInt(parts[1], 10);
-    const used = parseInt(parts[2], 10);
-    if (!isNaN(total) && !isNaN(used)) {
-      const pct = total > 0 ? ((used / total) * 100).toFixed(1) : '0';
-      return `${used} MB / ${total} MB (${pct}%)`;
-    }
+function parseCleanMemory(memVal) {
+  if (!memVal) return 'N/A';
+  if (typeof memVal === 'object') {
+    const total = memVal.total_mb || 0;
+    const used = memVal.used_mb || 0;
+    const pct = memVal.used_pct !== undefined ? memVal.used_pct : ((used / (total || 1)) * 100).toFixed(1);
+    return `${used} MB / ${total} MB (${pct}%)`;
   }
-
-  return 'Active';
+  return String(memVal);
 }
 
 // ==========================================
-// MAIN REACT COMPONENT
+// MONITOR PAGE COMPONENT
 // ==========================================
 
 export function MonitorPage() {
-  const [target, setTarget] = useState('linux_hosts');
+  const [target, setTarget] = useState('all');
   const [isScanning, setIsScanning] = useState(false);
 
-  // 1. Initialize state from sessionStorage if available (prevents resets on tab switch)
   const [monitoredHosts, setMonitoredHosts] = useState(() => {
     try {
       const saved = sessionStorage.getItem('monitor_hosts_data');
@@ -718,7 +798,6 @@ export function MonitorPage() {
     }
   });
 
-  // 2. Automatically sync state updates to sessionStorage
   useEffect(() => {
     if (Object.keys(monitoredHosts).length > 0) {
       sessionStorage.setItem('monitor_hosts_data', JSON.stringify(monitoredHosts));
@@ -733,14 +812,13 @@ export function MonitorPage() {
 
   async function runDeepMonitoringSweep() {
     setIsScanning(true);
-    const targetGroup = target.trim() || 'linux_hosts';
+    const targetGroup = target.trim() || 'all';
 
     try {
       if (!api.runAutomation) {
-        throw new Error('Electron automation API unavailable.');
+        throw new Error('Automation API unavailable.');
       }
 
-      // Execute all monitoring commands concurrently
       const [healthRes, vitalsRes, processRes] = await Promise.all([
         api.runAutomation('monitor', 'health', { target: targetGroup }),
         api.runAutomation('monitor', 'vitals', { target: targetGroup }),
@@ -750,67 +828,67 @@ export function MonitorPage() {
       const builtHostsMap = {};
 
       // PARSE HEALTH
-      const healthData = parseAnsibleDebugOutput(healthRes?.stdout);
-      Object.entries(healthData).forEach(([host, records]) => {
-        if (!builtHostsMap[host]) builtHostsMap[host] = { host, processes: [] };
-
-        records.forEach(rec => {
-          const rawUptime = rec['linux_uptime.stdout'] || (Array.isArray(rec.msg) ? rec.msg.join(' ') : rec.msg);
-          builtHostsMap[host].uptime = parseCleanUptime(rawUptime);
+      const rawHealthStdout = healthRes?.stdout || healthRes;
+      if (typeof rawHealthStdout === 'string') {
+        const uptimeMatches = [...rawHealthStdout.matchAll(/ok:\s*\[([^\]]+)\]\s*=>[\s\S]*?(linux_uptime|windows_uptime)\.stdout:\s*(?:\|-)?\s*([^\n]+(?:\n[^\n]+)?)/g)];
+        uptimeMatches.forEach((m) => {
+          const host = m[1];
+          const uptimeRaw = m[3].replace(/['"]/g, '').trim();
+          if (!builtHostsMap[host]) builtHostsMap[host] = { host, processes: [] };
+          builtHostsMap[host].uptime = parseCleanUptime(uptimeRaw);
         });
-      });
+      }
 
-      // PARSE DISK
-      const diskData = parseAnsibleDebugOutput(vitalsRes?.disk);
-      Object.entries(diskData).forEach(([host, records]) => {
-        if (!builtHostsMap[host]) builtHostsMap[host] = { host, processes: [] };
-
-        records.forEach(rec => {
-          if (Array.isArray(rec.msg)) {
-            builtHostsMap[host].diskUsed = parseCleanDisk(rec.msg);
-          }
-        });
-      });
-
-      // PARSE MEMORY
-      const memData = parseAnsibleDebugOutput(vitalsRes?.memory);
-      Object.entries(memData).forEach(([host, records]) => {
-        if (!builtHostsMap[host]) builtHostsMap[host] = { host, processes: [] };
-
-        records.forEach(rec => {
-          if (Array.isArray(rec.msg)) {
-            builtHostsMap[host].memoryUsed = parseCleanMemory(rec.msg);
-          }
-        });
-      });
+      // PARSE VITALS (MEMORY & DISK JSON OBJECTS)
+      const parsedVitals = safeParseJson(vitalsRes?.stdout) || vitalsRes;
+      if (parsedVitals) {
+        if (parsedVitals.memory) {
+          Object.entries(parsedVitals.memory).forEach(([host, memObj]) => {
+            if (!builtHostsMap[host]) builtHostsMap[host] = { host, processes: [] };
+            builtHostsMap[host].memoryUsed = parseCleanMemory(memObj);
+          });
+        }
+        if (parsedVitals.disk) {
+          Object.entries(parsedVitals.disk).forEach(([host, diskObj]) => {
+            if (!builtHostsMap[host]) builtHostsMap[host] = { host, processes: [] };
+            builtHostsMap[host].diskUsed = parseCleanDisk(diskObj);
+          });
+        }
+      }
 
       // PARSE PROCESSES
-      const processData = parseAnsibleDebugOutput(processRes?.stdout);
-      Object.entries(processData).forEach(([host, records]) => {
-        if (!builtHostsMap[host]) builtHostsMap[host] = { host, processes: [] };
+      const processData = parseAnsibleDebugOutput(processRes?.stdout || processRes);
+      if (typeof processData === 'object') {
+        Object.entries(processData).forEach(([host, records]) => {
+          if (!builtHostsMap[host]) builtHostsMap[host] = { host, processes: [] };
 
-        records.forEach(rec => {
-          if (Array.isArray(rec.msg)) {
-            const processes = [];
+          if (Array.isArray(records)) {
+            records.forEach((rec) => {
+              if (Array.isArray(rec.msg)) {
+                const processes = [];
 
-            rec.msg.forEach(line => {
-              const parts = line.trim().split(/\s+/);
-              if (parts.length >= 11 && !isNaN(parts[1]) && parts[1] !== 'PID') {
-                processes.push({
-                  user: parts[0],
-                  pid: parts[1],
-                  cpu: parts[2],
-                  mem: parts[3],
-                  status: parts[7] || 'Running',
-                  command: parts.slice(10).join(' ')
+                rec.msg.forEach((line) => {
+                  const parts = line.trim().split(/\s+/);
+                  if (parts.length >= 11 && !isNaN(parts[1]) && parts[1] !== 'PID') {
+                    processes.push({
+                      user: parts[0],
+                      pid: parts[1],
+                      cpu: parts[2],
+                      mem: parts[3],
+                      status: parts[7] || 'Running',
+                      command: parts.slice(10).join(' ')
+                    });
+                  }
                 });
+
+                builtHostsMap[host].processes = processes;
               }
             });
-
-            builtHostsMap[host].processes = processes;
+          } else if (Array.isArray(records.processes)) {
+            builtHostsMap[host].processes = records.processes;
           }
         });
-      });
+      }
 
       setMonitoredHosts(builtHostsMap);
       const keys = Object.keys(builtHostsMap);
@@ -830,14 +908,14 @@ export function MonitorPage() {
       if (api.runAutomation) {
         await api.runAutomation('monitor', 'kill-process', { target: hostName, pid });
       }
-      setMonitoredHosts(prev => {
+      setMonitoredHosts((prev) => {
         const hostData = prev[hostName];
         if (!hostData) return prev;
         return {
           ...prev,
           [hostName]: {
             ...hostData,
-            processes: hostData.processes.filter(p => p.pid !== pid)
+            processes: hostData.processes.filter((p) => p.pid !== pid)
           }
         };
       });
@@ -873,7 +951,7 @@ export function MonitorPage() {
             </span>
             <input
               type="text"
-              placeholder="e.g. linux_hosts, wsl_local"
+              placeholder="e.g. all, linux_hosts, wsl_local"
               value={target}
               onChange={(e) => setTarget(e.target.value)}
               className="bg-black/40 border border-white/15 rounded-lg px-3 py-2 text-xs text-white placeholder-white/30 focus:outline-none focus:border-emerald-500 w-full max-w-sm font-mono"
@@ -940,9 +1018,9 @@ export function MonitorPage() {
                             Online
                           </span>
                         </td>
-                        <td className="py-2.5 px-3 font-mono text-white/80">{h.uptime || 'Active'}</td>
-                        <td className="py-2.5 px-3 font-mono text-purple-400">{h.memoryUsed || 'Synced'}</td>
-                        <td className="py-2.5 px-3 font-mono text-blue-400">{h.diskUsed || 'Mounted'}</td>
+                        <td className="py-2.5 px-3 font-mono text-white/80">{h.uptime || 'N/A'}</td>
+                        <td className="py-2.5 px-3 font-mono text-purple-400">{h.memoryUsed || 'N/A'}</td>
+                        <td className="py-2.5 px-3 font-mono text-blue-400">{h.diskUsed || 'N/A'}</td>
                         <td className="py-2.5 px-3 text-right">
                           <button
                             onClick={(e) => { e.stopPropagation(); setSelectedHost(key); }}
@@ -961,7 +1039,7 @@ export function MonitorPage() {
         </div>
       </motion.div>
 
-      {/* Selected Host Process Details Table with Scrollable Wrapper */}
+      {/* Selected Host Process Details Table */}
       {activeDevice && (
         <motion.div className="bg-neutral-900/80 border border-white/10 rounded-xl p-4 shadow-lg backdrop-blur-md flex flex-col shrink-0" whileHover={{ y: -1 }}>
           <div className="flex flex-col gap-4">
@@ -974,11 +1052,11 @@ export function MonitorPage() {
                 <p className="text-[11px] text-white/40 mt-0.5">Top processes consuming system resources on target host.</p>
               </div>
               <span className="px-2 py-0.5 rounded text-[10px] bg-white/10 text-white/60 font-mono">
-                {activeDevice.processes.length} Processes
+                {activeDevice.processes?.length || 0} Processes
               </span>
             </div>
 
-            {activeDevice.processes.length === 0 ? (
+            {(!activeDevice.processes || activeDevice.processes.length === 0) ? (
               <div className="py-8 text-center text-white/30 text-xs border border-dashed border-white/10 rounded-lg">
                 No process metrics returned for this host.
               </div>
@@ -1025,6 +1103,7 @@ export function MonitorPage() {
     </div>
   );
 }
+
 export function PatchesPage() { return <GenericDomainPage title="Patch Management" domain="patches" color="#ec4899" description="System patch levels and upgrades" />; }
 export function ServicesPage() { return <GenericDomainPage title="System Services" domain="services" color="#8b5cf6" description="Daemon status and lifecycle control" />; }
 export function NetworkPage() { return <GenericDomainPage title="Network Management" domain="network" color="#06b6d4" description="Interface and routing settings" />; }
@@ -1040,9 +1119,6 @@ export function SettingsPage() {
 
   async function toggleAutoLaunch(v) {
     setAutoLaunch(v);
-    // Auto-launch-at-startup was an Electron/desktop-only feature — no
-    // browser equivalent, since a website can't register itself to run on
-    // boot. Simply dropped along with the rest of the desktop-only APIs.
   }
 
   return (
